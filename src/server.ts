@@ -4,10 +4,11 @@ import cors from "cors"
 import bodyParser from "body-parser"
 import jwt from "jsonwebtoken"
 import { PrismaClient } from "@prisma/client";
+import authMiddleware from "./middlewares/authmiddleware"
 
 
 const PORT: number = 3000;
-const SECRET_KEY: string = "webops2024";
+const SECRET_KEY: string = "webops2024"; //for signing the jwt token
 const app = express();
 const prisma = new PrismaClient();
 console.log("Connected to the DB");
@@ -19,6 +20,18 @@ interface User
   username: string,
   password: string,
   email: string
+}
+
+interface Product 
+{
+  name: string,
+  description: string,
+  category: string,
+  costPrice: number,
+  sellingPrice: number,
+  image: string,
+  userId: number,
+  productId: number
 }
 
 
@@ -82,7 +95,7 @@ app.post("/signin", async (req: any, res: any) => {
       .then((result: boolean) => {
         if (result) {
           //now send the token to the client and make it store in the localstorage.
-          const token: string = jwt.sign({ username: username }, SECRET_KEY);
+          const token: string = jwt.sign({userId: user.id}, SECRET_KEY);
           res.status(200).json({ token: token, message: "Login successful" });
         } else {
           res.status(401).json({ message: "Invalid credentials" });
@@ -95,6 +108,85 @@ app.post("/signin", async (req: any, res: any) => {
     res.status(401).json({ message: "No user found with the given username." });
   }
 });
+
+//product routes
+app.post("/product/add",authMiddleware,async (req: any,res: any)=>{
+  //we need to add a auth middleware here to check if the user is authenticated or not.
+  
+  //here the data about the product that we are getting must be in sync with the prisma schema so that we don't need to desructure it.
+  const productData = req.body;
+  console.log(productData.name)
+  
+  //now create the product in the database
+  try 
+  {
+
+    const productAdded = await prisma.product.create({
+      data:{
+        name: productData.name,
+        description: productData.description,
+        
+        image:productData.image,
+        userId: req.userId, //this is the user id that we are getting from the auth middleware.
+        category:productData.category,
+        costPrice: productData.costPrice,
+        sellingPrice: productData.sellingPrice,
+        condition: productData.condition
+      }
+    })
+    res.status(200).json({message:"Product added successfully."});
+  }
+  catch(err)
+  {
+      console.log(err)
+      res.status(500).json({message:"Error adding the product, please try again."})
+  }
+  
+
+})
+
+app.get("/products",async (req:any, res: any)=>{
+  // get all the products requesting to this route.
+  try 
+  {
+    const products = await prisma.product.findMany()
+    res.status(200).json({message:"Retrieval successfull!",products:products})
+  }
+  catch(err)
+  {
+    console.log(err)
+    res.status(500).json({message:"Internal server error."})
+  }
+  
+  
+})
+
+app.get("/product/:id", async (req:any, res:any)=>{
+  const {id} = req.params;
+  try 
+  {
+    const product: Product | null = await prisma.product.findUnique({
+      where:{
+        productId: parseInt(id)
+      }
+    })
+    if (product)
+    {
+      
+      res.status(200).json({message:"Product found.",product:product})
+    }
+    else 
+    {
+      res.status(200).json({message:"No product found with the given id."})
+    }
+  }
+  catch(err)
+  {
+    console.log(err)
+    res.status(500).json({message:"Internal server error."})
+  }
+})
+
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

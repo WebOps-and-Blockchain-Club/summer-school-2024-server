@@ -18,4 +18,18 @@ model User {
   username String @unique
   password String 
   email String @unique 
+  products Product[]
+}
+
+model Product{
+  productId Int @id @default(autoincrement())
+  name String
+  costPrice Float 
+  sellingPrice Float
+  condition String 
+  description String
+  image String
+  category String
+  userId Int
+  user User @relation(fields: [userId], references: [id])
 }
