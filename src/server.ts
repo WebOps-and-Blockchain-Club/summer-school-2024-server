@@ -7,7 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import authMiddleware from "./middlewares/authmiddleware"
 
 
-const PORT: number = 3000;
+const PORT: number = 3001;
 const SECRET_KEY: string = "webops2024"; //for signing the jwt token
 const app = express();
 const prisma = new PrismaClient();
@@ -31,7 +31,8 @@ interface Product
   sellingPrice: number,
   image: string,
   userId: number,
-  productId: number
+  
+  condition: string
 }
 
 
@@ -66,7 +67,8 @@ app.post("/signup", (req: any, res: any) => {
         },
       });
       if (user) {
-        res.status(200).json({ message: "User created successfully." });
+        const token: string = jwt.sign({userId: user.id}, SECRET_KEY);
+        res.status(200).json({ message: "User created successfully." , token:token});
       }
     })
     .catch((err) => {
@@ -109,6 +111,22 @@ app.post("/signin", async (req: any, res: any) => {
   }
 });
 
+// user-info routes
+app.get("/user/:id", async (req: any, res: any) => {
+  const { id } = req.params;
+  const user: User | null = await prisma.user.findUnique({
+    where: {
+      id: parseInt(id),
+    },
+  });
+  if (user) {
+    res.status(200).json({ message: "User found", user: user });
+  } else {
+    res.status(404).json({ message: "No user found with the given id." });
+  }
+}
+);
+
 //product routes
 app.post("/product/add",authMiddleware,async (req: any,res: any)=>{
   //we need to add a auth middleware here to check if the user is authenticated or not.
@@ -120,19 +138,19 @@ app.post("/product/add",authMiddleware,async (req: any,res: any)=>{
   //now create the product in the database
   try 
   {
-
+    const product: Product = {
+      name: productData.name,
+      description: productData.description,
+      
+      image:productData.image,
+      userId: req.userId, //this is the user id that we are getting from the auth middleware.
+      category:productData.category,
+      costPrice: productData.costPrice,
+      sellingPrice: productData.sellingPrice,
+      condition: productData.condition
+    }
     const productAdded = await prisma.product.create({
-      data:{
-        name: productData.name,
-        description: productData.description,
-        
-        image:productData.image,
-        userId: req.userId, //this is the user id that we are getting from the auth middleware.
-        category:productData.category,
-        costPrice: productData.costPrice,
-        sellingPrice: productData.sellingPrice,
-        condition: productData.condition
-      }
+      data:product
     })
     res.status(200).json({message:"Product added successfully."});
   }
@@ -187,7 +205,10 @@ app.get("/product/:id", async (req:any, res:any)=>{
   }
 })
 
+//chat logic for people.
+
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+ 
