@@ -13,7 +13,7 @@ export default function authMiddleware(req: any, res: any, next: any)
         //verify the token and call the next function to go the route further.
        try 
        {
-            //jwt.verify will throw an error f the token is not valid, which will be catched below.
+            //jwt.verify will throw an error if the token is not valid, which will be catched below.
 
            const decodedData = Object(jwt.verify(token, "webops2024")) //a sync function
            // * Here we need to convert it into object to get access to the data else it returns a jwt payload type which cannot be accessed as a object.

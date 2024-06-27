@@ -14,14 +14,13 @@ const prisma = new PrismaClient();
 console.log("Connected to the DB");
 
 //define the interfaces
-interface User  
-{
-  id: number,
-  username: string,
-  password: string,
-  email: string
+type User = {
+  id:number,
+  username:string,
+  rollNo:string,
+  email:string,
+  password:string
 }
-
 interface Product 
 {
   name: string,
@@ -47,7 +46,7 @@ app.get("/", (req: any, res: any) => {
   
 //auth routes
 app.post("/signup", (req: any, res: any) => {
-  const { username, password, email } = req.body;
+  const { username, password, email, rollNo } = req.body;
   const saltRounds: number = 10;
 
   console.log(username, password, email);
@@ -64,6 +63,7 @@ app.post("/signup", (req: any, res: any) => {
           username: username,
           password: hashedPassword,
           email: email,
+          rollNo:rollNo
         },
       });
       if (user) {
@@ -81,12 +81,12 @@ app.post("/signup", (req: any, res: any) => {
 });
 
 app.post("/signin", async (req: any, res: any) => {
-  const { username, password } = req.body;
+  const { rollNo, password } = req.body;
 
   //check if the user exists on the DB,if exists retreive it and compare the password
   const user: User | null = await prisma.user.findUnique({
     where: {
-      username: username,
+      rollNo: rollNo,
     },
   });
   if (user) {
@@ -126,6 +126,11 @@ app.get("/user/:id", async (req: any, res: any) => {
   }
 }
 );
+
+//delete all users
+app.delete("/users",async (req,res)=>{
+  await prisma.user.deleteMany().then(()=>{return res.json({message:"deleted all users."})})
+})
 
 //product routes
 app.post("/product/add",authMiddleware,async (req: any,res: any)=>{
@@ -167,8 +172,31 @@ app.get("/products",async (req:any, res: any)=>{
   // get all the products requesting to this route.
   try 
   {
-    const products = await prisma.product.findMany()
+    const products = await prisma.product.findMany({
+      include:{
+        user:true
+      }
+    })
     res.status(200).json({message:"Retrieval successfull!",products:products})
+  }
+  catch(err)
+  {
+    console.log(err)
+    res.status(500).json({message:"Internal server error."})
+  }
+  
+  
+})
+
+//delete all products
+app.delete("/products",async (req:any, res: any)=>{
+  // get all the products requesting to this route.
+  try 
+  {
+    const products = await prisma.product.deleteMany({
+     
+    })
+    res.status(200).json({message:"deleted! successfull!",products:products})
   }
   catch(err)
   {
@@ -186,6 +214,9 @@ app.get("/product/:id", async (req:any, res:any)=>{
     const product: Product | null = await prisma.product.findUnique({
       where:{
         productId: parseInt(id)
+      },
+      include:{
+        user:true
       }
     })
     if (product)

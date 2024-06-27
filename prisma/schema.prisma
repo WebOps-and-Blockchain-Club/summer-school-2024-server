@@ -15,10 +15,11 @@ datasource db {
 
 model User {
   id Int @id @default(autoincrement())
-  username String @unique
+  rollNo String @unique @default("")
   password String 
   email String @unique 
   products Product[]
+  username String @default("Username")
 }
 
 model Product{
