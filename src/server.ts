@@ -127,6 +127,22 @@ app.get("/user/:id", async (req: any, res: any) => {
 }
 );
 
+//details for the logged in user.
+app.get("/user", async (req: any, res: any) => {
+  const  id = req.userId;
+  const user: User | null = await prisma.user.findUnique({
+    where: {
+      id: parseInt(id),
+    },
+  });
+  if (user) {
+    res.status(200).json({ message: "User found", user: user });
+  } else {
+    res.status(404).json({ message: "No user found with the given id." });
+  }
+}
+);
+ 
 //delete all users
 app.delete("/users",async (req,res)=>{
   await prisma.user.deleteMany().then(()=>{return res.json({message:"deleted all users."})})
