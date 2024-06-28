@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import jwt, { decode } from "jsonwebtoken"
-
+import dotenv from "dotenv"
 export default function authMiddleware(req: any, res: any, next: any) 
 {
     

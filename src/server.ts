@@ -5,12 +5,14 @@ import bodyParser from "body-parser"
 import jwt from "jsonwebtoken"
 import { PrismaClient } from "@prisma/client";
 import authMiddleware from "./middlewares/authmiddleware"
-
+import dotenv from "dotenv"
 
 const PORT: number = 3001;
 const SECRET_KEY: string = "webops2024"; //for signing the jwt token
 const app = express();
 const prisma = new PrismaClient();
+dotenv.config()
+
 console.log("Connected to the DB");
 
 //define the interfaces
@@ -112,7 +114,7 @@ app.post("/signin", async (req: any, res: any) => {
 });
 
 // user-info routes
-app.get("/user/:id", async (req: any, res: any) => {
+app.get("/user/:id",authMiddleware, async (req: any, res: any) => {
   const { id } = req.params;
   const user: User | null = await prisma.user.findUnique({
     where: {
@@ -128,11 +130,11 @@ app.get("/user/:id", async (req: any, res: any) => {
 );
 
 //details for the logged in user.
-app.get("/user", async (req: any, res: any) => {
+app.get("/user",authMiddleware, async (req: any, res: any) => {
   const  id = req.userId;
   const user: User | null = await prisma.user.findUnique({
     where: {
-      id: parseInt(id),
+      id: (id),
     },
   });
   if (user) {
