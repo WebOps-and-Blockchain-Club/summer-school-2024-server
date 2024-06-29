@@ -20,6 +20,7 @@ model User {
   email String @unique 
   products Product[]
   username String @default("Username")
+  messages Message[]
 }
 
 model Product{
@@ -33,4 +34,13 @@ model Product{
   category String
   userId Int
   user User @relation(fields: [userId], references: [id])
+}
+
+model Message{
+  id Int @id @default(autoincrement())
+  text String
+  sender User @relation(fields: [senderId], references: [id])
+  senderId Int
+  roomName String
+  @@index([roomName])
 }
