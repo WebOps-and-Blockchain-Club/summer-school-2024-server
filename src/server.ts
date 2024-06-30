@@ -6,9 +6,14 @@ import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
 import authMiddleware from "./middlewares/authmiddleware";
 import dotenv from "dotenv";
-import cookie from "cookie";
+import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
+import multer from "multer"
+import crypto from "crypto"
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+
+// import cookie from "cookie";
 const WebSocket = require("ws");
-const PORT: number = 3002;
+const PORT: number = 3001;
 const SECRET_KEY: string = "webops2024"; //for signing the jwt token
 const app = express();
 const prisma = new PrismaClient();
@@ -41,6 +46,22 @@ interface Message {
   roomName: string;
   text: string;
 }
+
+//bucket config variables
+const bucketName = process.env.BUCKET_NAME;
+const bucketRegion = process.env.BUCKET_REGION;
+const accessKey = process.env.ACCESS_KEY || ''; //username of the user
+const secretAccessKey = process.env.SECRET_ACCESS_KEY || '' //password for the user
+
+const s3 = new S3Client({
+  credentials:{
+    accessKeyId:accessKey ,
+    secretAccessKey:secretAccessKey 
+  },
+  region:bucketRegion
+})
+
+const randomImageName = (bytes=32)=>{return crypto.randomBytes(bytes).toString('hex')}
 
 // Add the necessary middlewares
 app.use(cors());
@@ -144,18 +165,41 @@ app.delete("/users", async (req: Request, res: Response) => {
 });
 
 // Product routes
-app.post("/product/add", authMiddleware, async (req: any, res: Response) => {
-  const productData = req.body;
 
+const storage = multer.memoryStorage()
+const upload = multer({ storage: storage })
+app.post("/product/add", authMiddleware, upload.single('image') ,async (req: any, res: Response) => {
+  const productData = req.body;
+  const image = req.file
+  const imageName = randomImageName(32)
+
+  const params = {
+    Bucket: bucketName,
+    Key: imageName,
+    Body: image.buffer,
+    ContentType: image.mimetype,
+  
+  }
+
+  //put the image to the s3
+  const command = new PutObjectCommand(params)
+  try {
+    const result = await s3.send(command)
+    console.log(result)
+  } catch (err) {
+    console.log(err)
+  }
+
+  console.log("Image Uploaded to S3.")
   try {
     const product: Product = {
       name: productData.name,
       description: productData.description,
-      image: productData.image,
+      image: imageName,
       userId: req.userId,
       category: productData.category,
-      costPrice: productData.costPrice,
-      sellingPrice: productData.sellingPrice,
+      costPrice: parseInt(productData.costPrice),
+      sellingPrice: parseInt(productData.sellingPrice),
       condition: productData.condition,
     };
     await prisma.product.create({
@@ -170,6 +214,7 @@ app.post("/product/add", authMiddleware, async (req: any, res: Response) => {
   }
 });
 
+//this route is to get all the products from the DB
 app.get("/products", async (req: Request, res: Response) => {
   try {
     const products = await prisma.product.findMany({
@@ -177,15 +222,60 @@ app.get("/products", async (req: Request, res: Response) => {
         user: true,
       },
     });
+    
+
+    const productsWithImages = await Promise.all(products.map(async (product: Product) => {
+      const getObjectParams = {
+        Bucket: bucketName,
+        Key: product.image, // as this is the image name that we saved in the database.
+      };
+      const command = new GetObjectCommand(getObjectParams);
+      const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+  
+      // Now change the image name to the url
+      return { ...product, image: url }; // Create a new object with the updated image URL
+    }));
     res
       .status(200)
-      .json({ message: "Retrieval successful!", products: products });
+      .json({ message: "Retrieval successful!", products: productsWithImages });
   } catch (err) {
     console.log(err);
     res.status(500).json({ message: "Internal server error." });
   }
 });
 
+//route to get all the products related to the current logge in user.
+app.get("/products/user",authMiddleware, async (req: any, res: Response) => {
+  try {
+    const products = await prisma.product.findMany({
+      where:{
+        userId:req.userId
+      },
+      include: {
+        user: true,
+      },
+    });
+    
+
+    const productsWithImages = await Promise.all(products.map(async (product: Product) => {
+      const getObjectParams = {
+        Bucket: bucketName,
+        Key: product.image, // as this is the image name that we saved in the database.
+      };
+      const command = new GetObjectCommand(getObjectParams);
+      const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+  
+      // Now change the image name to the url
+      return { ...product, image: url }; // Create a new object with the updated image URL
+    }));
+    res
+      .status(200)
+      .json({ message: "Retrieval successful!", products: productsWithImages });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Internal server error." });
+  }
+})
 // Delete all products
 app.delete("/products", async (req: Request, res: Response) => {
   try {
@@ -196,6 +286,23 @@ app.delete("/products", async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal server error." });
   }
 });
+
+app.delete("/product/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await prisma.product.deleteMany({
+      where:{
+        productId:parseInt(id)
+      }
+    });
+    res.status(200).json({ message: "Deleted successfully!" });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({ message: "Internal server error." });
+  }
+});
+
+
 
 app.get("/product/:id", async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -208,8 +315,18 @@ app.get("/product/:id", async (req: Request, res: Response) => {
         user: true,
       },
     });
+    const getObjectParams = {
+      Bucket: bucketName,
+      Key: product?.image, //as this is the image name that we saved in the database.
+    }
+    const command = new GetObjectCommand(getObjectParams);
+    const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+
+    //now change the image name to the url
+    const productWithImage = {...product, image: url}
+
     if (product) {
-      res.status(200).json({ message: "Product found.", product: product });
+      res.status(200).json({ message: "Product found.", product: productWithImage });
     } else {
       res.status(200).json({ message: "No product found with the given id." });
     }
@@ -238,6 +355,7 @@ app.get("/messages/:roomName", async (req: Request, res: Response) => {
 const server = app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
 const wss = new WebSocket.Server({ server });
 interface ChatRooms {
   [roomName: string]: WebSocket[];
@@ -245,8 +363,8 @@ interface ChatRooms {
 const chatRooms: ChatRooms = {};
 
 wss.on("connection", (ws: WebSocket, req: Request) => {
-  const cookies = req.headers.cookie ? cookie.parse(req.headers.cookie) : {};
-  const token = cookies.token;
+ 
+  const token = req.headers.authorization?.split(" ")[1]; //you can directly get the token from the authorisation header.
 
   if (!token) {
     ws.close();
